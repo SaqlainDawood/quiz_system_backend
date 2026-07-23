@@ -36,7 +36,17 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.'
 });
 app.use('/api/quiz', limiter);
-
+// Sirf root route ke liye
+app.get('/', (req, res) => {
+  res.json({
+    message: '🎯 Quiz System API is live!',
+    endpoints: {
+      health: '/api/health',
+      quizzes: '/api/quizzes',
+      auth: '/api/auth'
+    }
+  });
+});
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/courses', courseRoutes);
