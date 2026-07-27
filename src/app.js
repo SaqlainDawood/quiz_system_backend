@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-
+const path = require('path');
 // const mongoSanitize = require('express-mongo-sanitize');
 const rateLimit = require('express-rate-limit');
 const NodeCache = require('node-cache');
@@ -82,7 +82,7 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/api/admin', adminRoutes);
-
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Health check
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Quiz API is running' });

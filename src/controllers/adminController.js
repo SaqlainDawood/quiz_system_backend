@@ -3,6 +3,7 @@ const Course = require('../models/Course');
 const Subject = require('../models/Subject');
 const Question = require('../models/Question');
 const QuizResult = require('../models/QuizResult');
+
 /**
  * Create a new course (Admin only)
  * POST /api/admin/courses
@@ -601,7 +602,319 @@ const getRecentActivity = async (req, res, next) => {
   }
 };
 
-// Route add karein adminRoutes.js mein:
+// ===== BULK IMPORT FROM EXCEL =====
+// Add at the top with other requires
+const XLSX = require('xlsx');
+const multer = require('multer');
+const path = require('path');
+const { extractText, parseMCQs, validateQuestions } = require('../utils/mcqParser');
+
+// Configure multer for file upload
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, '../../uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv',
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'text/plain'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Please upload Excel, PDF, Word, Image, or Text file.'));
+    }
+  }
+});
+
+/**
+ * Bulk import questions from Excel file
+ * POST /api/admin/questions/bulk-upload
+ */
+const bulkImportFromExcel = async (req, res, next) => {
+  try {
+    const { subjectId } = req.body;
+    
+    if (!subjectId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subject ID is required'
+      });
+    }
+
+    // Validate subject
+    const subject = await Subject.findById(subjectId);
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subject not found'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload a file'
+      });
+    }
+
+    // Read Excel file
+    const workbook = XLSX.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet);
+
+    if (data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'File is empty or has no valid data'
+      });
+    }
+
+    // Expected columns: Question, OptionA, OptionB, OptionC, OptionD, Correct, Difficulty
+    const questions = [];
+    const errors = [];
+
+    data.forEach((row, index) => {
+      try {
+        const question = row.Question?.trim() || row.question?.trim();
+        const options = [
+          row.OptionA?.trim() || row.optionA?.trim(),
+          row.OptionB?.trim() || row.optionB?.trim(),
+          row.OptionC?.trim() || row.optionC?.trim(),
+          row.OptionD?.trim() || row.optionD?.trim()
+        ].filter(opt => opt);
+
+        const correctMap = {
+          'A': 0, 'B': 1, 'C': 2, 'D': 3,
+          'a': 0, 'b': 1, 'c': 2, 'd': 3,
+          '1': 0, '2': 1, '3': 2, '4': 3
+        };
+        const correct = correctMap[row.Correct?.trim() || row.correct?.trim()];
+
+        if (!question) {
+          errors.push(`Row ${index + 2}: Question text is missing`);
+          return;
+        }
+        if (options.length !== 4) {
+          errors.push(`Row ${index + 2}: Exactly 4 options required (found ${options.length})`);
+          return;
+        }
+        if (correct === undefined) {
+          errors.push(`Row ${index + 2}: Correct answer not specified (use A, B, C, or D)`);
+          return;
+        }
+
+        questions.push({
+          subjectId: subject._id,
+          courseId: subject.courseId,
+          question,
+          options,
+          correct,
+          difficulty: row.Difficulty?.toLowerCase() || row.difficulty?.toLowerCase() || 'medium',
+          createdBy: req.user._id
+        });
+      } catch (err) {
+        errors.push(`Row ${index + 2}: ${err.message}`);
+      }
+    });
+
+    if (questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid questions found in the file',
+        errors
+      });
+    }
+
+    // Bulk insert
+    const createdQuestions = await Question.insertMany(questions);
+
+    // Clean up uploaded file
+    fs.unlinkSync(req.file.path);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        imported: createdQuestions.length,
+        total: data.length,
+        errors,
+        questions: createdQuestions
+      },
+      message: `${createdQuestions.length} questions imported successfully`
+    });
+
+  } catch (error) {
+    // Clean up uploaded file if exists
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    next(error);
+  }
+};
+
+/**
+ * AI-based bulk import from any file (PDF, Word, Image, Text)
+ * POST /api/admin/questions/ai-import
+ */
+const aiBulkImport = async (req, res, next) => {
+  try {
+    const { subjectId } = req.body;
+    
+    if (!subjectId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subject ID is required'
+      });
+    }
+
+    // Validate subject
+    const subject = await Subject.findById(subjectId);
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subject not found'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload a file'
+      });
+    }
+
+    // Extract text from file
+    const text = await extractText(req.file.path, req.file.mimetype);
+    
+    if (!text || text.trim().length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Could not extract text from the file. Please check the file content.'
+      });
+    }
+
+    // Parse MCQs
+    const parsedQuestions = parseMCQs(text);
+    
+    if (parsedQuestions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No MCQs found in the file. Please check the format.\n\nSupported formats:\n1. Question\nA. Option 1\nB. Option 2\nC. Option 3\nD. Option 4\nAnswer: A'
+      });
+    }
+
+    // Validate parsed questions
+    const { valid, errors } = validateQuestions(parsedQuestions);
+
+    if (valid.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid questions found. Please check the format.',
+        errors
+      });
+    }
+
+    // Save to database
+    const questions = valid.map(q => ({
+      subjectId: subject._id,
+      courseId: subject.courseId,
+      question: q.question,
+      options: q.options.slice(0, 4),
+      correct: q.correct,
+      difficulty: 'medium',
+      createdBy: req.user._id
+    }));
+
+    const savedQuestions = await Question.insertMany(questions);
+
+    // Clean up uploaded file
+    fs.unlinkSync(req.file.path);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        imported: savedQuestions.length,
+        total: parsedQuestions.length,
+        errors: errors.length > 0 ? errors : undefined,
+        questions: savedQuestions
+      },
+      message: `${savedQuestions.length} questions imported successfully!`
+    });
+
+  } catch (error) {
+    // Clean up uploaded file if exists
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    next(error);
+  }
+};
+
+/**
+ * Download Excel template
+ * GET /api/admin/questions/template
+ */
+const downloadTemplate = (req, res) => {
+  try {
+    const workbook = XLSX.utils.book_new();
+    const data = [
+      ['Question', 'OptionA', 'OptionB', 'OptionC', 'OptionD', 'Correct', 'Difficulty'],
+      ['What is 2+2?', '3', '4', '5', '6', 'B', 'easy'],
+      ['What is the capital of Pakistan?', 'Karachi', 'Lahore', 'Islamabad', 'Peshawar', 'C', 'medium'],
+      ['Which planet is known as the Red Planet?', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'B', 'easy'],
+      ['What is the chemical symbol for water?', 'H2O', 'CO2', 'NaCl', 'HCl', 'A', 'easy'],
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
+    
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 40 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 10 },
+      { wch: 12 }
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'MCQs');
+    
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    
+    res.setHeader('Content-Disposition', 'attachment; filename=mcq_template.xlsx');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating template: ' + error.message
+    });
+  }
+};
+
+// ===== EXPORT UPLOAD MIDDLEWARE =====
+const uploadMiddleware = upload.single('file');
 
 
 module.exports = {
@@ -618,5 +931,9 @@ module.exports = {
   getStatsOverview,
   getResultStats,
   getPopularSubjects,
-  getRecentActivity
+  getRecentActivity,
+   bulkImportFromExcel,
+  aiBulkImport,
+  downloadTemplate,
+  uploadMiddleware
 };

@@ -7,7 +7,7 @@ const { validate } = require('../middleware/validation');
 const {
   createCourseValidationPermissive,
   updateCourseValidation,
-  createSubjectValidationPermissive, // USE THIS
+  createSubjectValidationPermissive,
   createQuestionValidation,
   idParamValidation,
   courseIdParamValidation
@@ -27,7 +27,11 @@ const {
   getStatsOverview,
   getResultStats,
   getPopularSubjects,
-  getRecentActivity
+  // ✅ NEW IMPORTS
+  bulkImportFromExcel,
+  aiBulkImport,
+  downloadTemplate,
+  uploadMiddleware
 } = require('../controllers/adminController');
 
 // All admin routes are protected
@@ -38,7 +42,7 @@ router.post('/courses', validate(createCourseValidationPermissive), createCourse
 router.put('/courses/:id', validate(updateCourseValidation), updateCourse);
 router.delete('/courses/:id', validate(idParamValidation), deleteCourse);
 
-// Subject management - USE PERMISSIVE VALIDATION
+// Subject management
 router.post('/subjects', validate(createSubjectValidationPermissive), createSubject);
 router.put('/subjects/:id', validate(idParamValidation), updateSubject);
 router.delete('/subjects/:id', validate(idParamValidation), deleteSubject);
@@ -49,8 +53,12 @@ router.put('/questions/:id', validate(idParamValidation), updateQuestion);
 router.delete('/questions/:id', validate(idParamValidation), deleteQuestion);
 router.post('/questions/bulk', bulkImportQuestions);
 
+// ✅ NEW BULK IMPORT ROUTES
+router.post('/questions/bulk-upload', uploadMiddleware, bulkImportFromExcel);
+router.post('/questions/ai-import', uploadMiddleware, aiBulkImport);
+router.get('/questions/template', downloadTemplate);
+
 // Analytics
-router.get('/stats/recent-activity', getRecentActivity);
 router.get('/stats/overview', getStatsOverview);
 router.get('/stats/results', getResultStats);
 router.get('/stats/popular', getPopularSubjects);
