@@ -1,4 +1,9 @@
 const mongoose = require('mongoose');
+const XLSX = require('xlsx');
+const multer = require('multer');
+const path = require('path');
+const { extractText, parseMCQs, validateQuestions } = require('../utils/mcqParser');
+const fs = require('fs');
 const Course = require('../models/Course');
 const Subject = require('../models/Subject');
 const Question = require('../models/Question');
@@ -604,10 +609,7 @@ const getRecentActivity = async (req, res, next) => {
 
 // ===== BULK IMPORT FROM EXCEL =====
 // Add at the top with other requires
-const XLSX = require('xlsx');
-const multer = require('multer');
-const path = require('path');
-const { extractText, parseMCQs, validateQuestions } = require('../utils/mcqParser');
+
 
 // Configure multer for file upload
 const storage = multer.diskStorage({

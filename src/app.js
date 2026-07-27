@@ -15,6 +15,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+app.set('trust proxy', 1);
 const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes cache
 
 const cacheMiddleware = (duration) => {
