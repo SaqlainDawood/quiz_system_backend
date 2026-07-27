@@ -1,9 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+
 // const mongoSanitize = require('express-mongo-sanitize');
 const rateLimit = require('express-rate-limit');
-
+const NodeCache = require('node-cache');
 const authRoutes = require('./routes/authRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
@@ -14,7 +15,33 @@ const adminRoutes = require('./routes/adminRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes cache
 
+const cacheMiddleware = (duration) => {
+  return (req, res, next) => {
+    // Sirf GET requests cache karein
+    if (req.method !== 'GET') {
+      return next();
+    }
+    
+    const key = req.originalUrl;
+    const cachedResponse = cache.get(key);
+    
+    if (cachedResponse) {
+      console.log(`✅ Cache HIT: ${key}`);
+      return res.json(cachedResponse);
+    }
+    
+    // Store original send method
+    const originalSend = res.json;
+    res.json = function(data) {
+      console.log(`📦 Cache SET: ${key}`);
+      cache.set(key, data, duration);
+      originalSend.call(this, data);
+    };
+    next();
+  };
+};
 // Security middleware
 app.use(helmet());
 app.use(cors({
@@ -47,6 +74,7 @@ app.get('/', (req, res) => {
     }
   });
 });
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/courses', courseRoutes);

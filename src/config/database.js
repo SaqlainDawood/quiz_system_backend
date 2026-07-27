@@ -2,8 +2,7 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    // Note: useNewUrlParser and useUnifiedTopology are deprecated in newer Mongoose versions, 
-    // but leaving them here as it won't crash your app.
+    
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
     });

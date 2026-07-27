@@ -568,6 +568,41 @@ const getPopularSubjects = async (req, res, next) => {
     next(error);
   }
 };
+/**
+ * Get recent quiz activity (last 24 hours)
+ * GET /api/admin/stats/recent-activity
+ */
+const getRecentActivity = async (req, res, next) => {
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    const recentResults = await QuizResult.find({
+      completedAt: { $gte: twentyFourHoursAgo }
+    })
+    .sort({ completedAt: -1 })
+    .limit(10)
+    .populate('courseId', 'name fullName')
+    .populate('subjectId', 'name');
+
+    const activityCount = await QuizResult.countDocuments({
+      completedAt: { $gte: twentyFourHoursAgo }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        recentActivity: recentResults,
+        activityCount,
+        activeUsers: recentResults.length // Simplified
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Route add karein adminRoutes.js mein:
+
 
 module.exports = {
   createCourse,
@@ -582,5 +617,6 @@ module.exports = {
   bulkImportQuestions,
   getStatsOverview,
   getResultStats,
-  getPopularSubjects
+  getPopularSubjects,
+  getRecentActivity
 };

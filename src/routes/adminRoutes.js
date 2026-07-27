@@ -26,7 +26,8 @@ const {
   bulkImportQuestions,
   getStatsOverview,
   getResultStats,
-  getPopularSubjects
+  getPopularSubjects,
+  getRecentActivity
 } = require('../controllers/adminController');
 
 // All admin routes are protected
@@ -49,6 +50,7 @@ router.delete('/questions/:id', validate(idParamValidation), deleteQuestion);
 router.post('/questions/bulk', bulkImportQuestions);
 
 // Analytics
+router.get('/stats/recent-activity', getRecentActivity);
 router.get('/stats/overview', getStatsOverview);
 router.get('/stats/results', getResultStats);
 router.get('/stats/popular', getPopularSubjects);

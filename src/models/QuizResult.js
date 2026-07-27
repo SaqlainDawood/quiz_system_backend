@@ -65,6 +65,7 @@ const quizResultSchema = new mongoose.Schema({
 quizResultSchema.index({ sessionId: 1, completedAt: -1 });
 quizResultSchema.index({ courseId: 1, subjectId: 1 });
 quizResultSchema.index({ completedAt: -1 });
+quizResultSchema.index({ percentage: -1 });
 
 // Virtual for grade
 quizResultSchema.virtual('grade').get(function() {
