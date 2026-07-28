@@ -4,7 +4,7 @@ const path = require('path');       // ✅ ADD THIS
 const XLSX = require('xlsx');       // ✅ ADD THIS
 const multer = require('multer');   // ✅ ADD THIS
 const { extractText, parseMCQs, validateQuestions } = require('../utils/mcqParser');
-const fs = require('fs');
+
 const Course = require('../models/Course');
 const Subject = require('../models/Subject');
 const Question = require('../models/Question');
